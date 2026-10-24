@@ -1,0 +1,61 @@
+name: Build WordLens APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'WordLens-Android-Project.zip'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Unzip Android project
+        run: |
+          test -f WordLens-Android-Project.zip || {
+            echo "ERROR: Please upload WordLens-Android-Project.zip to the repository root."
+            exit 1
+          }
+          mkdir -p extracted
+          unzip -o WordLens-Android-Project.zip -d extracted
+          PROJECT_DIR="$(find extracted -type f -path '*/app/build.gradle' -print -quit | xargs -r dirname | xargs -r dirname)"
+          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
+            echo "ERROR: Could not find app/build.gradle and settings.gradle after unzipping."
+            find extracted -maxdepth 4 -type f | head -100
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project found at: $PROJECT_DIR"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        run: |
+          cd "$PROJECT_DIR"
+          gradle assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WordLens-debug-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
